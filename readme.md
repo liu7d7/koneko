@@ -52,7 +52,7 @@ hello world!
 
 ### built-in statements
 
-These built-in statements can be called in
+These built-in statements can be called in two ways: `statement arg_1 arg_2 .. arg_n` or `statement(arg_1, arg_2, .. , arg_n)`
 
 | name    | syntax                                                                                    | notes                                                                                                                                                                    |
 |---------|-------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
