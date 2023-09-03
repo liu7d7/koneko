@@ -1,5 +1,8 @@
 use std::cmp::{max, min};
 use std::collections::HashMap;
+use std::fmt::Debug;
+use std::fs::File;
+use std::io::{Read, Write};
 use std::time::SystemTime;
 
 use image::GenericImageView;
@@ -179,7 +182,9 @@ impl Koneko {
         "chr",
         "rnd",
         "rad",
-        "deg"
+        "deg",
+        "save",
+        "load"
       ]
     };
 
@@ -483,6 +488,8 @@ impl Koneko {
                 let res = self.basic.add_line(self.current_line.clone());
                 if let Err(error) = res {
                   self.error = Some(error);
+                } else if let Ok(Some(node)) = res {
+                  self.interpret(node).unwrap();
                 } else {
                   self.error = None;
                   self.current_line.clear();
@@ -1204,6 +1211,66 @@ impl Koneko {
 
             let value = self.interpret(args[0].clone())?.to_float()?;
             Ok(Value::Float(value.to_degrees()))
+          }
+          "save" => {
+            if args.len() != 1 {
+              return Err(format!("Expected 1 argument, got {}", args.len()));
+            }
+
+            let filename = match self.interpret(args[0].clone())? {
+              Value::String(str) => str,
+              _ => return Err(format!("Expected string, got {:?}", self.interpret(args[0].clone())?))
+            };
+
+            let mut file = File::create(&filename);
+            if let Err(err) = file {
+              return Err(format!("Could not create file {}: {}", filename, err));
+            }
+
+            let mut file = file.unwrap();
+            for line in &self.basic.program {
+              if let Err(err) = writeln!(file, "{}", line.contents) {
+                return Err(format!("Could not write to file {}: {}", &filename, &err));
+              }
+            }
+
+            Ok(Value::Nil)
+          }
+          "load" => {
+            if args.len() != 1 {
+              return Err(format!("Expected 1 argument, got {}", args.len()));
+            }
+
+            let filename = match self.interpret(args[0].clone())? {
+              Value::String(str) => str,
+              _ => return Err(format!("Expected string, got {:?}", self.interpret(args[0].clone())?))
+            };
+
+            let mut file = File::open(&filename);
+
+            if let Err(err) = file {
+              return Err(format!("Could not open file {}: {}", filename, err));
+            }
+
+            let mut file = file.unwrap();
+            let mut buffer = String::new();
+
+            if let Err(err) = file.read_to_string(&mut buffer) {
+              return Err(format!("Could not read from file {}: {}", filename, err));
+            }
+
+            let program_vec = buffer.split("\n").map(|x| x.to_string()).collect::<Vec<String>>();
+            self.basic.program.clear();
+
+            for line in program_vec {
+              if line.len() == 0 {
+                continue;
+              }
+
+              self.basic.add_line(line)?;
+            }
+
+            Ok(Value::Nil)
           }
           _ => {
             return Err(format!("Unknown builtin command {}", name));

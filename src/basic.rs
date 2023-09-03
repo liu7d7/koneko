@@ -252,19 +252,19 @@ impl BASIC {
     }
   }
 
-  pub fn add_line(&mut self, src: String) -> Result<(), String> {
+  pub fn add_line(&mut self, src: String) -> Result<Option<Node>, String> {
     let tokens = self.lex_line(&src)?;
-    println!("{:?}", tokens);
+    println!("tokens: {:?}\n", tokens);
     let line = self.parse_line(&tokens, src)?;
-    println!("{:?}", line);
+    println!("line: {:?}\n", line);
 
     if line.line_no == 0 {
-      return Err("Can't add line without number!".to_string());
+      return Ok(Some(line.node));
     }
 
     if line.node == Node::Nil {
       self.remove_line(line.line_no);
-      return Ok(());
+      return Ok(None);
     }
 
     if let Some(idx) = self.program.iter().position(|x| x.line_no == line.line_no) {
@@ -274,7 +274,7 @@ impl BASIC {
       self.program.sort();
     }
 
-    Ok(())
+    Ok(None)
   }
 
   fn remove_line(&mut self, line_no: usize) {
