@@ -30,4 +30,4 @@ hello world!
 70 next i
 80 poly vertices "blue"
 ```
-<img src="examples/blue%20circle.png" width="279" height="273" alt="blue circle">
+<img src="examples/blue%20circle.png" width="279" height="269" alt="blue circle">
