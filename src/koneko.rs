@@ -283,51 +283,50 @@ impl Koneko {
 
     for i in 0..vertices.len() {
       let (x, y) = vertices[i];
-      if x < min_x {
-        min_x = x;
+      if x - 1 < min_x {
+        min_x = x - 1;
       }
-      if y < min_y {
-        min_y = y;
+      if y - 1 < min_y {
+        min_y = y - 1;
       }
-      if x > max_x {
-        max_x = x;
+      if x + 1 > max_x {
+        max_x = x + 1;
       }
-      if y > max_y {
-        max_y = y;
+      if y + 1 > max_y {
+        max_y = y + 1;
       }
     }
 
-    let mut polybuf = vec![false; (max_x - min_x + 1) as usize * (max_y - min_y + 1) as usize];
-    let mut scanline_info = vec![0; (max_y - min_y) as usize + 1];
+    let mut polybuf = vec![0; (max_x - min_x + 1) as usize * (max_y - min_y + 1) as usize];
+    let mut scanline_end = vec![-1; (max_y - min_y) as usize + 1];
+    let mut scanline_begin = vec![(WIDTH + 1) as i32; (max_y - min_y) as usize + 1];
 
     for i in 0..vertices.len() {
-      let (x1, y1) = vertices[i];
+      let (mut x1, y1) = vertices[i];
       let (x2, y2) = vertices[(i + 1) % vertices.len()];
+      x1 += 1;
       if y1 == y2 {
         continue;
       }
 
       // one pixel per line
-      for y in min(y1, y2)..=max(y1, y2) {
+      for y in min(y1, y2)..max(y1, y2) {
         let x = x1 + (x2 - x1) * (y - y1) / (y2 - y1);
-        polybuf[((x - min_x) + (y - min_y) * (max_x - min_x + 1)) as usize] = true;
-        scanline_info[(y - min_y) as usize] = max(x - min_x, scanline_info[(y - min_y) as usize]);
+        polybuf[((x - min_x) + (y - min_y) * (max_x - min_x + 1)) as usize] += 1;
+        scanline_end[(y - min_y) as usize] = max(x - min_x, scanline_end[(y - min_y) as usize]);
+        scanline_begin[(y - min_y) as usize] = min(x - min_x, scanline_begin[(y - min_y) as usize]);
       }
     }
 
     for y in 0..max_y - min_y + 1 {
       let mut on = false;
-      for x in 0..max_x - min_x + 1 {
-        if polybuf[(x + y * (max_x - min_x + 1)) as usize] {
+      for x in scanline_begin[y as usize]..scanline_end[y as usize] {
+        if polybuf[(x + y * (max_x - min_x + 1)) as usize] % 2 == 1 {
           on = !on;
         }
 
         if on {
           self.draw_dot((x + min_x) as u32, (y + min_y) as u32, color);
-        }
-
-        if x == scanline_info[y as usize] {
-          break;
         }
       }
     }
