@@ -9,7 +9,7 @@
 25 next i
 30 refresh
 40 loop
-100 text a$ sin((time() + o)) * 226 + 226 cos((time() + o) * 1.3) * 145 + 145 c
+100 text a$ sin(time() + o) * 226 + 226 cos((time() + o) * 1.3) * 145 + 145 c
 110 ret
-200 text a$ cos((time() + o)) * 226 + 226 sin((time() + o) * 1.3) * 145 + 145 c
+200 text a$ cos(time() + o) * 226 + 226 sin((time() + o) * 1.3) * 145 + 145 c
 210 ret
