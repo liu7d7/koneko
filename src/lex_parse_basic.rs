@@ -1,7 +1,7 @@
 use std::cmp::Ordering;
 use std::collections::HashMap;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Value {
   String(String),
   Integer(i64),
@@ -59,6 +59,16 @@ impl Value {
   }
 
   pub fn to_integer(&self) -> Result<i64, String> {
+    match self {
+      Value::String(string) => Ok(string.parse::<i64>().unwrap()),
+      Value::Integer(num) => Ok(*num),
+      Value::Float(num) => Ok(num.round() as i64),
+      Value::Nil => Ok(0),
+      Value::Array(array) => Err(format!("Cannot convert array {:?} to integer!", array)),
+    }
+  }
+
+  pub fn to_integer_raw(&self) -> Result<i64, String> {
     match self {
       Value::String(string) => Ok(string.parse::<i64>().unwrap()),
       Value::Integer(num) => Ok(*num),
@@ -172,12 +182,8 @@ pub enum Token {
   Next,
   To,
   Step,
-  If,
   Then,
   Else,
-  Goto,
-  Gosub,
-  Ret,
   End,
   Pipe,
   Ampersand,
@@ -252,10 +258,23 @@ impl BASIC {
     }
   }
 
+  pub fn is_builtin_command(&self, str: &str) -> bool {
+    self.options.builtin_commands.contains(&str)
+  }
+
   pub fn add_line(&mut self, src: String) -> Result<Option<Node>, String> {
-    let tokens = self.lex_line(&src)?;
+    let (tokens, error) = self.lex_line(&src);
+    if !error.is_empty() {
+      return Err(error);
+    }
+
     println!("tokens: {:?}\n", tokens);
-    let line = self.parse_line(&tokens, src)?;
+    let parse_res = self.parse_line(&tokens.iter().map(|it| -> Token { it.0.clone() } ).collect(), src);
+    if let Err(e) = parse_res {
+      return Err(e);
+    }
+
+    let line = parse_res.unwrap();
     println!("line: {:?}\n", line);
 
     if line.line_no == 0 {
@@ -375,6 +394,38 @@ impl BASIC {
                 start: Box::new(start),
                 end: Box::new(end),
                 step: Box::new(step),
+              },
+            ));
+          }
+          "if" => {
+            idx += 1;
+            let (new_idx, cond) = self.expr(idx, tokens)?;
+            idx = new_idx;
+
+            if tokens[idx] != Token::Then {
+              return Err(format!("Expected 'then', got {:?}", tokens[idx]));
+            }
+            idx += 1;
+
+            let (new_idx, then) = self.expr(idx, tokens)?;
+            idx = new_idx;
+
+            let else_ = match tokens.get(idx) {
+              Some(Token::Else) => {
+                idx += 1;
+                let (new_idx, else_) = self.expr(idx, tokens)?;
+                idx = new_idx;
+                else_
+              }
+              _ => Node::Nil,
+            };
+
+            return Ok((
+              idx,
+              Node::If {
+                cond: Box::new(cond),
+                then: Box::new(then),
+                else_: Box::new(else_),
               },
             ));
           }
@@ -639,12 +690,13 @@ impl BASIC {
     Ok((idx, left))
   }
 
-  pub fn lex_line(&self, str: &str) -> Result<Vec<Token>, String> {
+  pub fn lex_line(&self, str: &str) -> (Vec<(Token, usize, usize)>, String) {
     let str = str.as_bytes();
     let mut idx = 0;
-    let mut tokens = Vec::<Token>::new();
+    let mut tokens = Vec::<(Token, usize, usize)>::new();
 
     while idx < str.len() {
+      let begin = idx;
       match str[idx] {
         b'0'..=b'9' => {
           let mut num = 0;
@@ -654,7 +706,7 @@ impl BASIC {
           }
 
           if idx == str.len() {
-            tokens.push(Token::Integer(num));
+            tokens.push((Token::Integer(num), begin, idx));
             break;
           }
 
@@ -667,9 +719,9 @@ impl BASIC {
               div *= 10.0;
               idx += 1;
             }
-            tokens.push(Token::Float(num as f64 + dec / div));
+            tokens.push((Token::Float(num as f64 + dec / div), begin, idx));
           } else {
-            tokens.push(Token::Integer(num));
+            tokens.push((Token::Integer(num), begin, idx));
           }
         }
         b'"' => {
@@ -679,37 +731,41 @@ impl BASIC {
             string.push(str[idx] as char);
             idx += 1;
           }
-          idx += 1;
-          tokens.push(Token::String(string));
+
+          if idx < str.len() {
+            idx += 1;
+          }
+
+          tokens.push((Token::String(string), begin, idx));
         }
         b'<' => {
           idx += 1;
           if idx < str.len() && str[idx] == b'>' {
-            tokens.push(Token::Neq);
+            tokens.push((Token::Neq, begin, idx));
             idx += 1;
           } else if idx < str.len() && str[idx] == b'=' {
-            tokens.push(Token::Lte);
+            tokens.push((Token::Lte, begin, idx));
             idx += 1;
           } else {
-            tokens.push(Token::Lt);
+            tokens.push((Token::Lt, begin, idx));
           }
         }
         b'>' => {
           idx += 1;
           if idx < str.len() && str[idx] == b'=' {
-            tokens.push(Token::Gte);
+            tokens.push((Token::Gte, begin, idx));
             idx += 1;
           } else {
-            tokens.push(Token::Gt);
+            tokens.push((Token::Gt, begin, idx));
           }
         }
         b'=' => {
           idx += 1;
           if idx < str.len() && str[idx] == b'=' {
-            tokens.push(Token::EqEq);
+            tokens.push((Token::EqEq, begin, idx));
             idx += 1;
           } else {
-            tokens.push(Token::Eq);
+            tokens.push((Token::Eq, begin, idx));
           }
         }
         b'a'..=b'z' | b'A'..=b'Z' | b'_' => {
@@ -730,9 +786,9 @@ impl BASIC {
           }
 
           if let Some(tok) = self.keywords.get(&var.as_str()) {
-            tokens.push((*tok).clone());
+            tokens.push(((*tok).clone(), begin, idx));
           } else {
-            tokens.push(Token::Identifier(var));
+            tokens.push((Token::Identifier(var), begin, idx));
           }
         }
         b'\t' | b' ' | b'\n' | b'\r' => {
@@ -740,15 +796,15 @@ impl BASIC {
         }
         _ => {
           if let Some(tok) = self.symbols.get(&str[idx]) {
-            tokens.push((*tok).clone());
             idx += 1;
+            tokens.push(((*tok).clone(), begin, idx));
           } else {
-            return Err(format!("Unknown token: {}", str[idx] as char));
+            return (tokens, format!("Unknown token: {}", str[idx] as char));
           }
         }
       }
     }
 
-    Ok(tokens)
+    (tokens, "".to_string())
   }
 }

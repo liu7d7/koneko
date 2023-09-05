@@ -1,41 +1,49 @@
 use std::ffi::c_void;
+use sdl2::keyboard::Keycode;
 
 use sdl2::pixels::PixelFormatEnum;
 use sdl2::surface::Surface;
 use sdl2::sys::{SDL_memcpy, size_t};
+use sdl2::video::FullscreenType;
 
 use crate::koneko::Koneko;
 
-pub mod basic;
+pub mod lex_parse_basic;
 pub mod csv;
 pub mod koneko;
 pub mod palette;
+pub mod koneko_basic;
+pub mod koneko_draw;
 
 fn run_koneko(ko: &mut Koneko) {
   extern crate sdl2;
 
   use sdl2::event::Event;
-  use std::time::Duration;
 
   let sdl_context = sdl2::init().unwrap();
   let video_subsystem = sdl_context.video().unwrap();
 
-  const WINDOW_WIDTH: u32 = koneko::WIDTH * 3;
-  const WINDOW_HEIGHT: u32 = koneko::HEIGHT * 3;
-
   let window = video_subsystem
-    .window("koneko", WINDOW_WIDTH, WINDOW_HEIGHT)
+    .window("koneko", koneko::WIDTH as u32 * 3, koneko::HEIGHT as u32 * 3)
     .position_centered()
+    .resizable()
     .build()
     .unwrap();
 
   let mut canvas = window.into_canvas().build().unwrap();
   let mut event_pump = sdl_context.event_pump().unwrap();
-  let surface = Surface::new(koneko::WIDTH, koneko::HEIGHT, PixelFormatEnum::ABGR32).unwrap();
+  let surface = Surface::new(koneko::WIDTH as u32, koneko::HEIGHT as u32, PixelFormatEnum::ABGR32).unwrap();
   'running: loop {
     for event in event_pump.poll_iter() {
       match event {
         Event::Quit { .. } => break 'running,
+        Event::KeyDown { keycode: Some(Keycode::F11), .. } => {
+          if let FullscreenType::Desktop = canvas.window().fullscreen_state() {
+            canvas.window_mut().set_fullscreen(FullscreenType::Off).unwrap();
+          } else {
+            canvas.window_mut().set_fullscreen(FullscreenType::Desktop).unwrap();
+          }
+        }
         Event::KeyDown { .. } => {
           ko.on_key(event);
         }
@@ -45,11 +53,6 @@ fn run_koneko(ko: &mut Koneko) {
         _ => {}
       }
     }
-
-    let begin = std::time::SystemTime::now()
-      .duration_since(std::time::UNIX_EPOCH)
-      .unwrap()
-      .as_millis();
     let a = ko.execute_code();
     if let Ok(_val) = a {
       // println!("val: {}", val);
@@ -75,18 +78,10 @@ fn run_koneko(ko: &mut Koneko) {
       .unwrap();
 
     canvas.present();
-    let end = std::time::SystemTime::now()
-      .duration_since(std::time::UNIX_EPOCH)
-      .unwrap()
-      .as_millis();
-    const SIXTY: u32 = 1_000_000_000u32 / 60;
-    let nanos = ((end - begin) * 1_000_000) as u32;
-    if nanos < SIXTY {
-      std::thread::sleep(Duration::new(0, SIXTY - nanos));
-    }
   }
 }
 
 fn main() {
+
   run_koneko(&mut Koneko::new(palette::sweetie_16(), "font.png"));
 }
