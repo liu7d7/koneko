@@ -12,6 +12,8 @@ impl Koneko {
         self.pixel(i, j, color);
       }
     }
+
+    self.printed_text.clear();
   }
 
   #[inline]

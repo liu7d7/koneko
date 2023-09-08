@@ -1,6 +1,7 @@
-use std::cmp::min;
-use std::collections::HashMap;
+use std::cmp::{max, min};
+use std::collections::{HashMap, VecDeque};
 use std::fmt::Debug;
+use std::ops::Index;
 use std::time::SystemTime;
 
 use image::GenericImageView;
@@ -14,7 +15,9 @@ use crate::palette::Sweetie16;
 
 pub(crate) const WIDTH: i32 = 480;
 pub(crate) const HEIGHT: i32 = 300;
+pub(crate) const TEXT_WIDTH: i32 = WIDTH / 5;
 pub(crate) const TEXT_HEIGHT: i32 = HEIGHT / 12;
+pub(crate) const BASIC_TEXT_HEIGHT: i32 = TEXT_HEIGHT - 3;
 pub(crate) const FONT_TEXTURE_SIZE: i32 = 160;
 pub(crate) static mut PROGRAM_BEGIN: u128 = 0;
 pub(crate) const COLOR_PREFIX: u8 = b'`';
@@ -64,10 +67,12 @@ pub struct Koneko {
   pub current_line_highlighted: String,
   pub line_cursor: i32,
   pub cursor: i32,
-  pub scroll: i32,
+  pub line_scroll: i32,
   pub prev_cursor_on: bool,
   pub error: Option<String>,
   pub ok: Option<String>,
+  pub keys_down: Vec<Keycode>,
+  pub keys_idx: usize
 }
 
 impl Koneko {
@@ -194,6 +199,10 @@ impl Koneko {
         "new",
         "rim",
         "text",
+      ],
+      builtin_vars: vec![
+        "time",
+        "inkey$"
       ]
     };
 
@@ -209,10 +218,12 @@ impl Koneko {
       current_line_highlighted: "".to_string(),
       line_cursor: 0,
       cursor: 0,
-      scroll: 0,
+      line_scroll: 0,
       prev_cursor_on: false,
       error: None,
       ok: None,
+      keys_down: Vec::new(),
+      keys_idx: 0
     };
 
     ko.redraw_screen();
@@ -222,14 +233,19 @@ impl Koneko {
   pub fn on_key(&mut self, event: Event) {
     match event {
       Event::KeyDown { keycode, keymod, .. } => {
+        if let Some(keycode) = keycode {
+          if !self.keys_down.contains(&keycode) {
+            self.keys_down.push(keycode);
+          }
+        }
+
         match keycode {
           Some(Keycode::Tab) => {
-            let line_empty = self.current_line.is_empty();
             let line_cursor_valid = self.line_cursor < self.basic.program.len() as i32;
             if keymod.contains(sdl2::keyboard::Mod::LCTRLMOD) {
               self.screen = (self.screen + 1) % 2;
               self.redraw_screen();
-            } else if line_empty && line_cursor_valid {
+            } else if line_cursor_valid {
               self.current_line = self.basic.program[self.line_cursor as usize].contents.clone();
               self.cursor = self.current_line.len() as i32;
             }
@@ -276,6 +292,9 @@ impl Koneko {
           Some(Keycode::Up) => {
             if self.screen == BASIC_SCREEN && self.line_cursor > 0 {
               self.line_cursor -= 1;
+              if self.line_cursor < self.line_scroll && self.line_scroll > 0 {
+                self.line_scroll = self.line_cursor;
+              }
               self.redraw_screen();
             }
           }
@@ -283,6 +302,9 @@ impl Koneko {
             let can_go_down = self.line_cursor < self.basic.program.len() as i32 - 1;
             if self.screen == BASIC_SCREEN && can_go_down {
               self.line_cursor += 1;
+              if self.line_cursor >= self.line_scroll + BASIC_TEXT_HEIGHT {
+                self.line_scroll = self.line_cursor - BASIC_TEXT_HEIGHT + 1;
+              }
               self.redraw_screen();
             }
           }
@@ -313,19 +335,26 @@ impl Koneko {
           _ => {}
         }
       }
+      Event::KeyUp { keycode, .. } => {
+        if let Some(keycode) = keycode {
+          if let Some(idx) = self.keys_down.iter().position(|&x| x == keycode) {
+            self.keys_down.remove(idx);
+          }
+        }
+      }
       _ => {}
     }
 
     if self.screen == BASIC_SCREEN {
-      self.current_line_highlighted = self.highlight_string(self.current_line.clone());
+      self.current_line_highlighted = self.highlight_string(self.current_line.clone().to_string());
     }
   }
-
+  
   pub fn on_text_input(&mut self, event: Event) {
     if let Event::TextInput { text, .. } = event {
       if self.screen == BASIC_SCREEN {
         self.current_line.insert_str(self.cursor as usize, text.as_str());
-        self.current_line_highlighted = self.highlight_string(self.current_line.clone());
+        self.current_line_highlighted = self.highlight_string(self.current_line.clone().to_string());
         self.cursor += text.len() as i32;
       }
     }
@@ -377,14 +406,18 @@ impl Koneko {
     match self.screen {
       BASIC_SCREEN => {
         self.cls(Sweetie16::Black);
-        for i in self.basic.program.len() - min(TEXT_HEIGHT as usize - 1, self.basic.program.len())..self.basic.program.len() {
-          let mut display = self.highlight_string(self.basic.program[i].contents.clone());
+        for i in self.line_scroll..self.line_scroll + BASIC_TEXT_HEIGHT {
+          if i >= self.basic.program.len() as i32 {
+            break;
+          }
 
-          if i == self.line_cursor as usize {
+          let mut display = self.highlight_string(self.basic.program[i as usize].contents.clone());
+
+          if i == self.line_cursor {
             display = String::from("> ") + display.as_str();
           }
 
-          self.text(display.as_str(), 3, 3 + i as i32 * 12, Sweetie16::White, None::<u8>, None::<u8>)
+          self.text(display.as_str(), 3, 3 + (i - self.line_scroll) * 12, Sweetie16::White, None::<u8>, None::<u8>)
         }
 
         if let Some(error) = &self.error {
@@ -394,6 +427,7 @@ impl Koneko {
         }
       }
       EXEC_SCREEN => {
+        self.keys_down.clear();
         self.basic.reset_program_state();
         self.cls(Sweetie16::Black);
       }
@@ -434,14 +468,15 @@ impl Koneko {
   pub fn execute_code(&mut self) -> Result<(), String> {
     if self.screen == EXEC_SCREEN {
       let begin = millis();
-      while !self.basic.refresh && millis() - begin < 1000 {
+      while !self.basic.refresh && millis() - begin < 2000 {
         if self.basic.line_no >= self.basic.program.len() {
           break;
         }
         self.exec_current_line()?;
       }
+      self.keys_idx = 0;
 
-      if millis() - begin >= 1000 {
+      if millis() - begin >= 2000 {
         self.screen = BASIC_SCREEN;
         self.error = Some("Timeout, try adding a refresh statement".to_string());
         self.redraw_screen();

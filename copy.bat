@@ -1,0 +1,1 @@
+copy "%~dp0\target\debug\koneko.exe" "%~dp0\koneko.exe"

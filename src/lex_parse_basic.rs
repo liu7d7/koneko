@@ -221,6 +221,7 @@ static INVALID_LINE_NO: usize = 0;
 
 pub struct ParseOptions {
   pub builtin_commands: Vec<&'static str>,
+  pub builtin_vars: Vec<&'static str>
 }
 
 pub struct BASIC {
@@ -268,14 +269,12 @@ impl BASIC {
       return Err(error);
     }
 
-    println!("tokens: {:?}\n", tokens);
     let parse_res = self.parse_line(&tokens.iter().map(|it| -> Token { it.0.clone() } ).collect(), src);
     if let Err(e) = parse_res {
       return Err(e);
     }
 
     let line = parse_res.unwrap();
-    println!("line: {:?}\n", line);
 
     if line.line_no == 0 {
       return Ok(Some(line.node));
@@ -515,6 +514,10 @@ impl BASIC {
   }
 
   pub fn mul(&self, mut idx: usize, tokens: &Vec<Token>) -> Result<(usize, Node), String> {
+    if idx >= tokens.len() {
+      return Err("Expected expression, got end of line!".to_string());
+    }
+
     match tokens[idx] {
       Token::Add | Token::Sub => {
         let op = tokens[idx].clone();
@@ -577,6 +580,10 @@ impl BASIC {
               args,
             },
           ));
+        }
+
+        if self.options.builtin_vars.contains(&name.as_str()) {
+          return Ok((idx, Node::BuiltinCommand { name: name.clone(), args: vec![] }));
         }
 
         if idx < tokens.len() && tokens[idx] == Token::LSquare {
@@ -762,8 +769,8 @@ impl BASIC {
         b'=' => {
           idx += 1;
           if idx < str.len() && str[idx] == b'=' {
-            tokens.push((Token::EqEq, begin, idx));
             idx += 1;
+            tokens.push((Token::EqEq, begin, idx));
           } else {
             tokens.push((Token::Eq, begin, idx));
           }

@@ -47,6 +47,9 @@ fn run_koneko(ko: &mut Koneko) {
         Event::KeyDown { .. } => {
           ko.on_key(event);
         }
+        Event::KeyUp { .. } => {
+          ko.on_key(event);
+        }
         Event::TextInput { .. } => {
           ko.on_text_input(event);
         }
@@ -55,7 +58,7 @@ fn run_koneko(ko: &mut Koneko) {
     }
     let a = ko.execute_code();
     if let Ok(_val) = a {
-      // println!("val: {}", val);
+
     } else if let Err(e) = a {
       ko.print(format!("Error: {}", e));
     }

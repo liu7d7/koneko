@@ -174,6 +174,16 @@ impl Koneko {
               Value::Integer(
                 (left == right) as i64))
           }
+          Token::Ampersand => {
+            let lhs = left.is_truthy();
+            let rhs = right.is_truthy();
+            Ok(Value::Integer((lhs && rhs) as i64))
+          }
+          Token::Pipe => {
+            let lhs = left.is_truthy();
+            let rhs = right.is_truthy();
+            Ok(Value::Integer((lhs || rhs) as i64))
+          }
           _ => Err(format!("Cannot compare {:?} and {:?} with op {:?}", left, right, op))
         }
       }
@@ -448,6 +458,7 @@ impl Koneko {
                 if args.len() != 1 {
                   return Err(format!("Expected 1 argument, got {}", args.len()));
                 }
+                println!("{:?}", args[0].clone());
                 self.interpret(args[0].clone()).unwrap()
               }
               _ => return Err(format!("Expected if statement, got {:?}", self.basic.program[line_no].node.clone()))
@@ -457,6 +468,7 @@ impl Koneko {
               self.basic.line_no = line_no;
               Ok(Value::Nil)
             } else {
+              self.basic.while_stack.pop();
               Ok(Value::Nil)
             }
           }
@@ -468,6 +480,23 @@ impl Koneko {
               self.basic.while_stack.push(self.basic.line_no);
               Ok(Value::Nil)
             } else {
+              let mut depth = 0;
+              loop {
+                if let Node::BuiltinCommand { name, args: _args } = self.basic.program[self.basic.line_no].node.clone() {
+                  if name == "loop" {
+                    if depth == 0 {
+                      break;
+                    } else {
+                      depth -= 1;
+                    }
+                  }
+
+                  if name == "while" {
+                    depth += 1;
+                  }
+                }
+                self.basic.line_no += 1;
+              }
               Ok(Value::Nil)
             }
           }
@@ -604,6 +633,18 @@ impl Koneko {
 
             self.text(&*text, x, y, color, shadow, background);
             Ok(Value::Nil)
+          }
+          "inkey$" => {
+            Self::expect_n_args(&args, 0)?;
+
+            let key = if let Some(keycode) = self.keys_down.get(self.keys_idx) {
+              keycode.name()
+            } else {
+              return Ok(Value::Nil);
+            };
+            self.keys_idx += 1;
+
+            Ok(Value::String(key))
           }
           _ => {
             return Err(format!("Unknown builtin command {}", name));
