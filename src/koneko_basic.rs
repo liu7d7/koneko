@@ -455,10 +455,11 @@ impl Koneko {
                 if name != "while" {
                   return Err(format!("Expected while statement, got {:?}", self.basic.program[line_no].node.clone()));
                 }
+
                 if args.len() != 1 {
                   return Err(format!("Expected 1 argument, got {}", args.len()));
                 }
-                println!("{:?}", args[0].clone());
+
                 self.interpret(args[0].clone()).unwrap()
               }
               _ => return Err(format!("Expected if statement, got {:?}", self.basic.program[line_no].node.clone()))
@@ -482,9 +483,14 @@ impl Koneko {
             } else {
               let mut depth = 0;
               loop {
-                if let Node::BuiltinCommand { name, args: _args } = self.basic.program[self.basic.line_no].node.clone() {
+                if self.basic.program.len() <= self.basic.line_no + 1 {
+                  return Err("Unexpected end of program!".to_string());
+                }
+
+                if let Node::BuiltinCommand { name, args: _args } = self.basic.program[self.basic.line_no + 1].node.clone() {
                   if name == "loop" {
                     if depth == 0 {
+                      self.basic.line_no += 1;
                       break;
                     } else {
                       depth -= 1;

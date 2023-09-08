@@ -1,8 +1,10 @@
 use std::ffi::c_void;
 use sdl2::keyboard::Keycode;
+use sdl2::libc::exit;
 
 use sdl2::pixels::PixelFormatEnum;
 use sdl2::surface::Surface;
+use sdl2::sys;
 use sdl2::sys::{SDL_memcpy, size_t};
 use sdl2::video::FullscreenType;
 
@@ -33,10 +35,10 @@ fn run_koneko(ko: &mut Koneko) {
   let mut canvas = window.into_canvas().build().unwrap();
   let mut event_pump = sdl_context.event_pump().unwrap();
   let surface = Surface::new(koneko::WIDTH as u32, koneko::HEIGHT as u32, PixelFormatEnum::ABGR32).unwrap();
-  'running: loop {
+  loop {
     for event in event_pump.poll_iter() {
       match event {
-        Event::Quit { .. } => break 'running,
+        Event::Quit { .. } => std::process::exit(0),
         Event::KeyDown { keycode: Some(Keycode::F11), .. } => {
           if let FullscreenType::Desktop = canvas.window().fullscreen_state() {
             canvas.window_mut().set_fullscreen(FullscreenType::Off).unwrap();
